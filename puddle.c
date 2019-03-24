@@ -12,8 +12,8 @@
 
 size_t WIDTH;
 size_t HEIGHT;
-double DAMP = 0.999;
-double K = 44.0;
+double DAMP = 0.99;
+double K = 44.5;
 double MAXDISP = 100;
 
 static const char GREYSCALE[] = " .:-=+*#%@";
@@ -116,17 +116,30 @@ void printframe(spring** field, size_t row, size_t col){
 
 void puddle(){
     int persecond = 1000000;
-    int framerate = persecond / 20;
+    int framerate = 20;
+    int frameperiod = persecond / framerate;
     spring** field = new_grid(HEIGHT, WIDTH);
     spring** oldfield = new_grid(HEIGHT, WIDTH);
-    field[10][10].x = MAXDISP;
-    prop(&field, &oldfield, HEIGHT, WIDTH);
     int c = 0;
+    int x = rand() % WIDTH;
+    int y = rand() % HEIGHT;
+    int wait = rand() % (framerate * 4);
+    int count = 0;
+    field[y][x].x = MAXDISP;
+    prop(&field, &oldfield, HEIGHT, WIDTH);
     while ((c = getch()) != 'q'){
+        if (count == wait){
+            x = rand() % WIDTH;
+            y = rand() % HEIGHT;
+            wait = rand() % (framerate * 4);
+            count = 0;
+            field[y][x].x = 9 * MAXDISP;
+        }
         printframe(field, HEIGHT, WIDTH);
         prop(&field, &oldfield, HEIGHT, WIDTH);
         sim(&field, HEIGHT, WIDTH);
-        usleep(framerate);
+        usleep(frameperiod);
+        count++;
     }
     free_grid(field, HEIGHT);
     free_grid(oldfield, HEIGHT);
@@ -138,6 +151,7 @@ void puddle(){
 }
 
 int main(int argc, char** argv){
+    srand(time(NULL));
     start_ncurses();
     puddle();
     return 0;
