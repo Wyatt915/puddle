@@ -12,8 +12,8 @@
 
 size_t WIDTH;
 size_t HEIGHT;
-double DAMP = 0.98;
-double K = 44.5;
+double DAMP = 0.99;
+double K = 10;
 double MAXDISP = 100;
 
 static const char GREYSCALE[] = " .,:?)tuUO*%B@$#";
@@ -46,45 +46,38 @@ void free_grid(spring** grid, size_t row){
 
 //-------------------------------------------[Simulation]-------------------------------------------
 
-//Propagate foces to neighboring springs
-void prop(spring*** cur, spring*** prev, size_t row, size_t col){
+//Propagate foces to neighboring springs and simulate
+void simulate(spring*** cur, size_t row, size_t col, double frameperiod){
     spring** temp = new_grid(row, col);
-    for(int r = 0; r < row; r++){
-        for(int c = 0; c < col; c++){
-            //add up all forces (equivalent to acceleration with m=1)
-            if (r > 0)      temp[r][c].a += (*cur)[r-1][c].x * K * -1;
-            if (r < row-1)  temp[r][c].a += (*cur)[r+1][c].x * K * -1;
-            if (c > 0)      temp[r][c].a += (*cur)[r][c-1].x * K * -1;
-            if (c < col-1)  temp[r][c].a += (*cur)[r][c+1].x * K * -1;
-            temp[r][c].a /= 2; //Average the x- and y-components.
-            temp[r][c].a -= K * (*cur)[r][c].x;
-            temp[r][c].a -= (*prev)[r][c].a;
-            temp[r][c].a *= DAMP;
-            //maintain position and velocity until it is recalculated in the sim() function
-            temp[r][c].x = (*cur)[r][c].x;
-            temp[r][c].v = (*cur)[r][c].v;
+    size_t resolution = 1000;
+    double dt = 0.001;
+    //double dt = frameperiod / (double) resolution;
+    for(size_t i = 0; i < resolution; i++){
+        for(int r = 0; r < row; r++){
+            for(int c = 0; c < col; c++){
+                temp[r][c].x = (*cur)[r][c].x + (dt * (*cur)[r][c].v) + (dt * dt * (*cur)[r][c].a)/2;
+                temp[r][c].v = (*cur)[r][c].v + (dt * (*cur)[r][c].a);
+                //add up all forces (equivalent to acceleration with m=1)
+                if (r > 0)      temp[r][c].a -= (*cur)[r-1][c].x * K;
+                if (r < row-1)  temp[r][c].a -= (*cur)[r+1][c].x * K;
+                if (c > 0)      temp[r][c].a -= (*cur)[r][c-1].x * K;
+                if (c < col-1)  temp[r][c].a -= (*cur)[r][c+1].x * K;
+                temp[r][c].a /= 2; //Average the x- and y-components.
+                temp[r][c].a -= K * (*cur)[r][c].x;
+                temp[r][c].a += DAMP * (*cur)[r][c].v;
+                //maintain position and velocity until it is recalculated in the sim() function
+            }
         }
-    }
-    //update prev and cur; free temp
-    for(size_t r = 0; r < row; r++){
-        for(size_t c = 0; c < col; c++){
-            (*prev)[r][c] = (*cur)[r][c];
-            (*cur)[r][c] = temp[r][c];
+        //update cur
+        for(size_t r = 0; r < row; r++){
+            for(size_t c = 0; c < col; c++){
+                (*cur)[r][c] = temp[r][c];
+            }
         }
+
     }
     free_grid(temp, row);
     temp = NULL;
-}
-
-//Run physics simulation on springs
-void sim(spring*** grid, size_t row, size_t col){
-    double dt = 0.10;
-    for(size_t r = 0; r < row; r++){
-        for(size_t c = 0; c < col; c++){
-            (*grid)[r][c].v = DAMP * (dt * (*grid)[r][c].a);
-            (*grid)[r][c].x = (dt * (*grid)[r][c].v) + (dt * dt * (*grid)[r][c].a)/2;
-        }
-    }
 }
 
 //-------------------------------------------[Rendering]--------------------------------------------
@@ -125,10 +118,9 @@ void printframe(spring** field, size_t row, size_t col){
 
 void puddle(float intensity){
     int persecond = 1000000;
-    int framerate = 30;
+    int framerate = 20;
     int frameperiod = persecond / framerate;
     spring** field = new_grid(HEIGHT, WIDTH);
-    spring** oldfield = new_grid(HEIGHT, WIDTH);
     int c = 0;
     int x = rand() % WIDTH;
     int y = rand() % HEIGHT;
@@ -140,18 +132,15 @@ void puddle(float intensity){
             y = rand() % HEIGHT;
             wait = rand() % (int)(framerate * 10 / intensity);
             count = -1;
-            field[y][x].x = rand() % (int)(10 * MAXDISP);
+            field[y][x].x = MAXDISP;
         }
         printframe(field, HEIGHT, WIDTH);
-        prop(&field, &oldfield, HEIGHT, WIDTH);
-        sim(&field, HEIGHT, WIDTH);
+        simulate(&field, HEIGHT, WIDTH, 1.0 / (double) framerate);
         usleep(frameperiod);
         count++;
     }
     free_grid(field, HEIGHT);
-    free_grid(oldfield, HEIGHT);
     field = NULL;
-    oldfield = NULL;
 #ifdef COLOR
     if(has_colors()){
         attroff(COLOR_PAIR(1));
