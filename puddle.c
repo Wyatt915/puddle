@@ -12,8 +12,8 @@
 
 size_t WIDTH;
 size_t HEIGHT;
-double DAMP = 0.99;
-double K = 10;
+double DAMP = 0.9;
+double K = 20;
 double MAXDISP = 100;
 
 static const char GREYSCALE[] = " .,:?)tuUO*%B@$#";
@@ -49,22 +49,23 @@ void free_grid(spring** grid, size_t row){
 //Propagate foces to neighboring springs and simulate
 void simulate(spring*** cur, size_t row, size_t col, double frameperiod){
     spring** temp = new_grid(row, col);
-    size_t resolution = 1000;
-    double dt = 0.001;
-    //double dt = frameperiod / (double) resolution;
+    size_t resolution = 20;
+    //double dt = 0.01;
+    double dt = frameperiod / (double) resolution;
     for(size_t i = 0; i < resolution; i++){
         for(int r = 0; r < row; r++){
             for(int c = 0; c < col; c++){
                 temp[r][c].x = (*cur)[r][c].x + (dt * (*cur)[r][c].v) + (dt * dt * (*cur)[r][c].a)/2;
                 temp[r][c].v = (*cur)[r][c].v + (dt * (*cur)[r][c].a);
                 //add up all forces (equivalent to acceleration with m=1)
-                if (r > 0)      temp[r][c].a -= (*cur)[r-1][c].x * K;
-                if (r < row-1)  temp[r][c].a -= (*cur)[r+1][c].x * K;
-                if (c > 0)      temp[r][c].a -= (*cur)[r][c-1].x * K;
-                if (c < col-1)  temp[r][c].a -= (*cur)[r][c+1].x * K;
-                temp[r][c].a /= 2; //Average the x- and y-components.
-                temp[r][c].a -= K * (*cur)[r][c].x;
-                temp[r][c].a += DAMP * (*cur)[r][c].v;
+                if (r > 0)      temp[r][c].a -=((*cur)[r][c].x - (*cur)[r-1][c].x) * K;
+                if (r < row-1)  temp[r][c].a -=((*cur)[r][c].x - (*cur)[r+1][c].x) * K;
+                if (c > 0)      temp[r][c].a -=((*cur)[r][c].x - (*cur)[r][c-1].x) * K;
+                if (c < col-1)  temp[r][c].a -=((*cur)[r][c].x - (*cur)[r][c+1].x) * K;
+                temp[r][c].a /= 4; //Average the x- and y-components.
+                //temp[r][c].a *= DAMP;
+                //temp[r][c].a -= K * (*cur)[r][c].x;
+                temp[r][c].a -= (1 * DAMP * temp[r][c].v);
                 //maintain position and velocity until it is recalculated in the sim() function
             }
         }
@@ -132,7 +133,7 @@ void puddle(float intensity){
             y = rand() % HEIGHT;
             wait = rand() % (int)(framerate * 10 / intensity);
             count = -1;
-            field[y][x].x = MAXDISP;
+            field[y][x].x = 4 * MAXDISP;
         }
         printframe(field, HEIGHT, WIDTH);
         simulate(&field, HEIGHT, WIDTH, 1.0 / (double) framerate);
