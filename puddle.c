@@ -12,19 +12,19 @@
 
 size_t WIDTH;
 size_t HEIGHT;
-double DAMP = 0.9;
+double DAMP = 0.95;
 double K = 20;
-double MAXDISP = 100;
+double MAXDISP = 1;
 
 static const char GREYSCALE[] = " .,:?)tuUO*%B@$#";
 
 //----------------------------------------[Spring Structure]----------------------------------------
-
-typedef struct Spring{
-    float x; //displacement
-    float v; //velocity
-    float a; //acceleration
-} spring;
+typedef double spring;
+//typedef struct Spring{
+//    float x; //displacement
+//    float v; //velocity
+//    float a; //acceleration
+//} spring;
 
 //---------------------------------------[Memory Management]----------------------------------------
 
@@ -45,40 +45,19 @@ void free_grid(spring** grid, size_t row){
 }
 
 //-------------------------------------------[Simulation]-------------------------------------------
+//https://web.archive.org/web/20160418004149/http://freespace.virgin.net/hugo.elias/graphics/x_water.htm
 
-//Propagate foces to neighboring springs and simulate
-void simulate(spring*** cur, size_t row, size_t col, double frameperiod){
-    spring** temp = new_grid(row, col);
-    size_t resolution = 20;
-    //double dt = 0.01;
-    double dt = frameperiod / (double) resolution;
-    for(size_t i = 0; i < resolution; i++){
-        for(int r = 0; r < row; r++){
-            for(int c = 0; c < col; c++){
-                temp[r][c].x = (*cur)[r][c].x + (dt * (*cur)[r][c].v) + (dt * dt * (*cur)[r][c].a)/2;
-                temp[r][c].v = (*cur)[r][c].v + (dt * (*cur)[r][c].a);
-                //add up all forces (equivalent to acceleration with m=1)
-                if (r > 0)      temp[r][c].a -=((*cur)[r][c].x - (*cur)[r-1][c].x) * K;
-                if (r < row-1)  temp[r][c].a -=((*cur)[r][c].x - (*cur)[r+1][c].x) * K;
-                if (c > 0)      temp[r][c].a -=((*cur)[r][c].x - (*cur)[r][c-1].x) * K;
-                if (c < col-1)  temp[r][c].a -=((*cur)[r][c].x - (*cur)[r][c+1].x) * K;
-                temp[r][c].a /= 4; //Average the x- and y-components.
-                //temp[r][c].a *= DAMP;
-                //temp[r][c].a -= K * (*cur)[r][c].x;
-                temp[r][c].a -= (1 * DAMP * temp[r][c].v);
-                //maintain position and velocity until it is recalculated in the sim() function
-            }
+void simulate(spring*** buf1, spring*** buf2, size_t rows, size_t cols){
+    for (size_t i = 1; i < rows - 1; i++){
+        for (size_t j = 1; j < cols - 1; j++){
+            (*buf2)[i][j]=(((*buf1)[i-1][j] +
+                            (*buf1)[i+1][j] +
+                            (*buf1)[i][j-1] +
+                            (*buf1)[i][j+1]) / 2)
+                            - (*buf2)[i][j];
+            (*buf2)[i][j] *= DAMP;
         }
-        //update cur
-        for(size_t r = 0; r < row; r++){
-            for(size_t c = 0; c < col; c++){
-                (*cur)[r][c] = temp[r][c];
-            }
-        }
-
     }
-    free_grid(temp, row);
-    temp = NULL;
 }
 
 //-------------------------------------------[Rendering]--------------------------------------------
@@ -103,14 +82,14 @@ void start_ncurses(){
 void printframe(spring** field, size_t row, size_t col){
     char ch;
     int len = strlen(GREYSCALE);
-    for(int r = 0; r < row; r++){
-        for(int c = 0; c < col; c++){
-            move(r, c * 2);
-            int ch_val = MIN((int)(abs((float)len * field[r][c].x / (float)MAXDISP)), len - 1);
+    for(int r = 1; r < row; r++){
+        for(int c = 1; c < col; c++){
+            move(r-1, (c*2)-1);
+            int ch_val = MIN((int)(abs((float)len * field[r][c] / (float)MAXDISP)), len - 1);
             ch_val = MAX(0, ch_val);
             ch = GREYSCALE[ch_val];
             addch(ch);
-            move(r, (2 * c) + 1);
+            move(r-1, c*2);
             addch(ch);
         }
     }
@@ -121,7 +100,9 @@ void puddle(float intensity){
     int persecond = 1000000;
     int framerate = 20;
     int frameperiod = persecond / framerate;
-    spring** field = new_grid(HEIGHT, WIDTH);
+    spring** field = new_grid(HEIGHT+2, WIDTH+2);
+    spring** next = new_grid(HEIGHT+2, WIDTH+2);
+    spring** temp;
     int c = 0;
     int x = rand() % WIDTH;
     int y = rand() % HEIGHT;
@@ -133,14 +114,20 @@ void puddle(float intensity){
             y = rand() % HEIGHT;
             wait = rand() % (int)(framerate * 10 / intensity);
             count = -1;
-            field[y][x].x = 4 * MAXDISP;
+            field[y][x] += 4*(float)rand()/(float)(RAND_MAX/MAXDISP) - (MAXDISP/2);
         }
         printframe(field, HEIGHT, WIDTH);
-        simulate(&field, HEIGHT, WIDTH, 1.0 / (double) framerate);
+        simulate(&field, &next, HEIGHT, WIDTH);
+
+        temp = field;
+        field = next;
+        next = temp;
+
         usleep(frameperiod);
         count++;
     }
     free_grid(field, HEIGHT);
+    free_grid(next, HEIGHT);
     field = NULL;
 #ifdef COLOR
     if(has_colors()){
