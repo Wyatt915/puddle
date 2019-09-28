@@ -53,7 +53,11 @@ void simulate(spring*** buf1, spring*** buf2, size_t rows, size_t cols){
             (*buf2)[i][j]=(((*buf1)[i-1][j] +
                             (*buf1)[i+1][j] +
                             (*buf1)[i][j-1] +
-                            (*buf1)[i][j+1]) / 2)
+                            (*buf1)[i][j+1]) * 3 / 8) + ((
+                            (*buf1)[i-1][j-1]/SQRT2 +
+                            (*buf1)[i+1][j-1]/SQRT2 +
+                            (*buf1)[i-1][j+1]/SQRT2 +
+                            (*buf1)[i+1][j+1]/SQRT2) / 8)
                             - (*buf2)[i][j];
             (*buf2)[i][j] *= DAMP;
         }
@@ -67,8 +71,12 @@ void start_ncurses(){
 #ifdef COLOR
     if (has_colors()){
         start_color();
-        init_pair(1, COLOR_CYAN, COLOR_BLUE);
-        attron(COLOR_PAIR(1));
+        //for whatever reason, white is #231, then #232 is dark grey, and the colors keep getting
+        //lighter up to 255. so we need to start at #232 and place #231 at the end if we want white
+        //to be included, or we can omit it and stick with 24 greyscale values.
+        for(int i = 0; i < 24; i++){
+            init_pair(i+1, -1, i+232);
+        }
     }
 #endif
     cbreak();
@@ -79,18 +87,20 @@ void start_ncurses(){
     WIDTH /= 2; //Divide by 2 to make circular ripples instead of elliptical ones.
 }
 
-void printframe(spring** field, size_t row, size_t col){
-    char ch;
-    int len = strlen(GREYSCALE);
-    for(int r = 1; r < row; r++){
-        for(int c = 1; c < col; c++){
-            move(r-1, (c*2)-1);
-            int ch_val = MIN((int)(abs((float)len * field[r][c] / (float)MAXDISP)), len - 1);
-            ch_val = MAX(0, ch_val);
-            ch = GREYSCALE[ch_val];
-            addch(ch);
-            move(r-1, c*2);
-            addch(ch);
+int printframe(spring** field, size_t row, size_t col){
+    char ch = ' ';
+    int mag; //Magnitude of the ripple and therefore its color
+    for(int r = 1; r <= row; r++){
+        for(int c = 1; c <= col; c++){
+            //int ch_val = MIN((int)(abs((float)len * field[r][c] / (float)MAXDISP)), len - 1);
+            //ch_val = MAX(0, ch_val);
+            //ch = GREYSCALE[ch_val];
+            mag = MIN(abs((int)(24.0 * field[r][c] / (float)(MAXDISP))), 24);
+            mag = MAX(mag, 1);
+            attron(COLOR_PAIR(mag));
+            move(r-1, (c-1)*2);
+            addch(ch); addch(ch);
+            attroff(COLOR_PAIR(mag));
         }
     }
     refresh();
@@ -98,7 +108,8 @@ void printframe(spring** field, size_t row, size_t col){
 
 void puddle(float intensity){
     int persecond = 1000000;
-    int framerate = 20;
+    int framerate = 30;
+    intensity = MIN(intensity, framerate*10);
     int frameperiod = persecond / framerate;
     spring** field = new_grid(HEIGHT+2, WIDTH+2);
     spring** next = new_grid(HEIGHT+2, WIDTH+2);
@@ -110,11 +121,11 @@ void puddle(float intensity){
     int count = -1;
     while ((c = getch()) != 'q'){
         if (count == wait){
-            x = rand() % WIDTH;
-            y = rand() % HEIGHT;
+            x = 1 + rand() % (WIDTH - 2);
+            y = 1 + rand() % (HEIGHT - 2);
             wait = rand() % (int)(framerate * 10 / intensity);
             count = -1;
-            field[y][x] += 4*(float)rand()/(float)(RAND_MAX/MAXDISP) - (MAXDISP/2);
+            field[y][x] += 8*(float)rand()/(float)(RAND_MAX/MAXDISP) - (MAXDISP/2);
         }
         printframe(field, HEIGHT, WIDTH);
         simulate(&field, &next, HEIGHT, WIDTH);

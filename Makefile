@@ -1,5 +1,6 @@
 CC=gcc
-LNFLAGS=-lncurses
+#ncurses is limited to 16 colors; ncursesw has wide char support and 256 colors
+LNFLAGS=-lncursesw
 CFLAGS=
 
 #Name of the executable to be produced
