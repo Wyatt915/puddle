@@ -12,30 +12,21 @@
 
 size_t WIDTH;
 size_t HEIGHT;
-double DAMP = 0.95;
 double MAXDISP = 1;
 
 static const char GREYSCALE[] = " .,:?)tuUO*%B@$#";
 
-//----------------------------------------[Spring Structure]----------------------------------------
-typedef double spring;
-//typedef struct Spring{
-//    float x; //displacement
-//    float v; //velocity
-//    float a; //acceleration
-//} spring;
-
 //---------------------------------------[Memory Management]----------------------------------------
 
-spring** new_grid(size_t row, size_t col){
-    spring** grid = (spring**) malloc(row * sizeof(spring*));
+double** new_grid(size_t row, size_t col){
+    double** grid = (double**) malloc(row * sizeof(double*));
     for(size_t i = 0; i < row; i++){
-        grid[i] = (spring*) calloc(col, sizeof(spring));
+        grid[i] = (double*) calloc(col, sizeof(double));
     }
     return grid;
 }
 
-void free_grid(spring** grid, size_t row){
+void free_grid(double** grid, size_t row){
     for(size_t i = 0; i < row; i++){
         free(grid[i]);
         grid[i] = NULL;
@@ -46,27 +37,28 @@ void free_grid(spring** grid, size_t row){
 //-------------------------------------------[Simulation]-------------------------------------------
 //https://web.archive.org/web/20160418004149/http://freespace.virgin.net/hugo.elias/graphics/x_water.htm
 
-void simulate(spring*** buf1, spring*** buf2, size_t rows, size_t cols){
+void simulate(double*** buf1, double*** buf2, size_t rows, size_t cols, double damp){
     //Remember that the buffers are larger than the screen area. there is a padding of 1 cell all
     //the way around, hence why we are able to access the memory location at i+1 and j+1 in all
     //cases.
     for (size_t i = 1; i < rows; i++){
         for (size_t j = 1; j < cols; j++){
+            // Note that 11/32 + 5/32 = 1/2.
             (*buf2)[i][j]=(((*buf1)[i-1][j] +
                             (*buf1)[i+1][j] +
                             (*buf1)[i][j-1] +
-                            (*buf1)[i][j+1]) * 11 / 32) + ((
+                            (*buf1)[i][j+1]) * 11 / 32) + (( //We have added the edges, now do diagonals.
                             (*buf1)[i-1][j-1]/SQRT2 +
                             (*buf1)[i+1][j-1]/SQRT2 +
                             (*buf1)[i-1][j+1]/SQRT2 +
                             (*buf1)[i+1][j+1]/SQRT2) * 5 / 32)
                             - (*buf2)[i][j];
-            (*buf2)[i][j] *= DAMP;
+            (*buf2)[i][j] *= damp;
         }
     }
 }
 
-//-------------------------------------------[Rendering]--------------------------------------------
+//---------------------------------------[NCURSES functions]----------------------------------------
 
 int start_ncurses(){
     initscr();
@@ -98,7 +90,7 @@ void stop_ncurses(){
     endwin();
 }
 
-int printframe(spring** field, size_t row, size_t col){
+int printframe(double** field, size_t row, size_t col){
     char ch = '#';
     int mag; //Magnitude of the ripple and therefore its color
     int len = sizeof(GREYSCALE);
@@ -106,11 +98,11 @@ int printframe(spring** field, size_t row, size_t col){
     for(int r = 1; r <= row; r++){
         for(int c = 1; c <= col; c++){
 #ifdef NOCOLOR
-            int ch_val = MIN((int)(abs((float)len * field[r][c] / (float)MAXDISP)), len - 1);
+            int ch_val = MIN((int)(abs((double)len * field[r][c] / (double)MAXDISP)), len - 1);
             ch_val = MAX(0, ch_val);
             ch = GREYSCALE[ch_val];
 #else
-            mag = MIN(abs((int)(24.0 * field[r][c] / (float)(MAXDISP))), 24);
+            mag = MIN(abs((int)(24.0 * field[r][c] / (double)(MAXDISP))), 24);
             mag = MAX(mag, 1);
             attron(COLOR_PAIR(mag));
 #endif //NOCOLOR
@@ -123,30 +115,34 @@ int printframe(spring** field, size_t row, size_t col){
     refresh();
 }
 
-void puddle(float intensity){
-    int persecond = 1000000;
+//------------------------------------------[Primary Loop]------------------------------------------
+
+void puddle(double intensity, double damp){
+    const int persecond = 1000000;
     int framerate = 30;
     intensity = MIN(intensity, framerate*10);
     int frameperiod = persecond / framerate;
-    spring** field = new_grid(HEIGHT+2, WIDTH+2);
-    spring** next = new_grid(HEIGHT+2, WIDTH+2);
-    spring** temp;
+    double** field = new_grid(HEIGHT+2, WIDTH+2);
+    double** next = new_grid(HEIGHT+2, WIDTH+2);
+    double** temp;
     int c = 0;
-    int x = rand() % WIDTH;
-    int y = rand() % HEIGHT;
+    int x;
+    int y;
     int wait = rand() % (int)(framerate * 10 / intensity);
     int count = -1;
     while ((c = getch()) != 'q'){
         if (count == wait){
+            // If raindrops fall directly on the edge they get "stuck"
             x = 1 + rand() % (WIDTH - 2);
             y = 1 + rand() % (HEIGHT - 2);
             wait = rand() % (int)(framerate * 10 / intensity);
             count = -1;
-            field[y][x] += 8*(float)rand()/(float)(RAND_MAX/MAXDISP) - (MAXDISP/2);
+            field[y][x] += 8*(double)rand()/(double)(RAND_MAX/MAXDISP) - (MAXDISP/2);
         }
+        simulate(&field, &next, HEIGHT, WIDTH, damp);
         printframe(field, HEIGHT, WIDTH);
-        simulate(&field, &next, HEIGHT, WIDTH);
 
+        //Swap the buffers
         temp = field;
         field = next;
         next = temp;
@@ -154,16 +150,19 @@ void puddle(float intensity){
         usleep(frameperiod);
         count++;
     }
-    free_grid(field, HEIGHT);
-    free_grid(next, HEIGHT);
+    free_grid(field, HEIGHT+2);
+    free_grid(next, HEIGHT+2);
     field = NULL;
 }
+
+//----------------------------------------------[Main]----------------------------------------------
 
 int main(int argc, char** argv){
     srand(time(NULL));
     int opt;
     opterr = 0;
-    float intensity = 25;
+    double intensity = 25;
+    double damp = 0.95;
 
     const char helpmsg[] =
         "Usage: %s [flags]\n"\
@@ -189,14 +188,14 @@ int main(int argc, char** argv){
     while ((opt = getopt(argc, argv, "d:i:h")) != -1){
         switch (opt) {
             case 'd':
-                DAMP = atof(optarg);
+                damp = atof(optarg);
                 break;
             case 'i':
                 intensity = atof(optarg);
                 break;
             case 'h':
             default:
-                fprintf(stderr, helpmsg, argv[0], DAMP, intensity);
+                fprintf(stderr, helpmsg, argv[0], damp, intensity);
                 return 0;
         }
     }
@@ -207,7 +206,7 @@ int main(int argc, char** argv){
         return 1;
     }
 
-    puddle(intensity);
+    puddle(intensity, damp);
     stop_ncurses();
     return 0;
 }
