@@ -13,7 +13,6 @@
 size_t WIDTH;
 size_t HEIGHT;
 double DAMP = 0.95;
-double K = 20;
 double MAXDISP = 1;
 
 static const char GREYSCALE[] = " .,:?)tuUO*%B@$#";
@@ -48,16 +47,19 @@ void free_grid(spring** grid, size_t row){
 //https://web.archive.org/web/20160418004149/http://freespace.virgin.net/hugo.elias/graphics/x_water.htm
 
 void simulate(spring*** buf1, spring*** buf2, size_t rows, size_t cols){
-    for (size_t i = 1; i < rows - 1; i++){
-        for (size_t j = 1; j < cols - 1; j++){
+    //Remember that the buffers are larger than the screen area. there is a padding of 1 cell all
+    //the way around, hence why we are able to access the memory location at i+1 and j+1 in all
+    //cases.
+    for (size_t i = 1; i < rows; i++){
+        for (size_t j = 1; j < cols; j++){
             (*buf2)[i][j]=(((*buf1)[i-1][j] +
                             (*buf1)[i+1][j] +
                             (*buf1)[i][j-1] +
-                            (*buf1)[i][j+1]) * 3 / 8) + ((
+                            (*buf1)[i][j+1]) * 11 / 32) + ((
                             (*buf1)[i-1][j-1]/SQRT2 +
                             (*buf1)[i+1][j-1]/SQRT2 +
                             (*buf1)[i-1][j+1]/SQRT2 +
-                            (*buf1)[i+1][j+1]/SQRT2) / 8)
+                            (*buf1)[i+1][j+1]/SQRT2) * 5 / 32)
                             - (*buf2)[i][j];
             (*buf2)[i][j] *= DAMP;
         }
@@ -66,38 +68,53 @@ void simulate(spring*** buf1, spring*** buf2, size_t rows, size_t cols){
 
 //-------------------------------------------[Rendering]--------------------------------------------
 
-void start_ncurses(){
+int start_ncurses(){
     initscr();
-#ifdef COLOR
+#ifndef NOCOLOR
     if (has_colors()){
         start_color();
+        if (COLORS < 256) { return -1; }
         //for whatever reason, white is #231, then #232 is dark grey, and the colors keep getting
         //lighter up to 255. so we need to start at #232 and place #231 at the end if we want white
         //to be included, or we can omit it and stick with 24 greyscale values.
         for(int i = 0; i < 24; i++){
-            init_pair(i+1, -1, i+232);
+            init_pair(i+1, i+232, i+232);
         }
     }
-#endif
+    else { return -1; }
+#endif //NOCOLOR
     cbreak();
     curs_set(0); //Invisible cursor
     timeout(0); //make getch() nonblocking
     keypad(stdscr, TRUE);
     getmaxyx(stdscr, HEIGHT, WIDTH);
     WIDTH /= 2; //Divide by 2 to make circular ripples instead of elliptical ones.
+    return 0;
+}
+
+void stop_ncurses(){
+    clear();
+    refresh();
+    endwin();
 }
 
 int printframe(spring** field, size_t row, size_t col){
-    char ch = ' ';
+    char ch = '#';
     int mag; //Magnitude of the ripple and therefore its color
+    int len = sizeof(GREYSCALE);
+    //Remember that extra padding around the buffers!
     for(int r = 1; r <= row; r++){
         for(int c = 1; c <= col; c++){
-            //int ch_val = MIN((int)(abs((float)len * field[r][c] / (float)MAXDISP)), len - 1);
-            //ch_val = MAX(0, ch_val);
-            //ch = GREYSCALE[ch_val];
+#ifdef NOCOLOR
+            int ch_val = MIN((int)(abs((float)len * field[r][c] / (float)MAXDISP)), len - 1);
+            ch_val = MAX(0, ch_val);
+            ch = GREYSCALE[ch_val];
+#else
             mag = MIN(abs((int)(24.0 * field[r][c] / (float)(MAXDISP))), 24);
             mag = MAX(mag, 1);
             attron(COLOR_PAIR(mag));
+#endif //NOCOLOR
+            //Subtracting 1 since the loop starts incrementing at 1.
             move(r-1, (c-1)*2);
             addch(ch); addch(ch);
             attroff(COLOR_PAIR(mag));
@@ -140,22 +157,36 @@ void puddle(float intensity){
     free_grid(field, HEIGHT);
     free_grid(next, HEIGHT);
     field = NULL;
-#ifdef COLOR
-    if(has_colors()){
-        attroff(COLOR_PAIR(1));
-    }
-#endif
-    clear();
-    refresh();
-    endwin();
 }
 
 int main(int argc, char** argv){
     srand(time(NULL));
     int opt;
     opterr = 0;
-    float intensity = 7;
-    while ((opt = getopt(argc, argv, "d:i:k:")) != -1){
+    float intensity = 25;
+
+    const char helpmsg[] =
+        "Usage: %s [flags]\n"\
+        "\t-d\tSet the damping factor. A smaller damping factor\n"\
+        "\t\tmeans ripples die out faster. Default is %g.\n"\
+        "\t-i\tSet the rainfall intensity. A higher intensity means\n"\
+        "\t\tmore raindrops per second. Default is %g.\n"\
+        "\t-h\tShow this message and exit\n";
+
+    const char colormsg[] =
+        "%s requres 256-color support to run.\n"\
+        "You can check if your terminal has 256 colors with\n"\
+        "$ echo $TERM\n"\
+        "(the output should read xterm-256color). When compiling,\n"\
+        "make sure that you have ncurses ABI 6 or later and that\n"\
+        "you link against ncurses with the flag -lncursesw if you\n"\
+        "are not using the makefile for some reason.  If you are on\n"\
+        "a system or terminal that does not have such capability,\n"\
+        "you can compile with\n"\
+        "$ make nocolor\n"\
+        "or use the -DNOCOLOR flag with gcc.\n";
+
+    while ((opt = getopt(argc, argv, "d:i:h")) != -1){
         switch (opt) {
             case 'd':
                 DAMP = atof(optarg);
@@ -163,15 +194,20 @@ int main(int argc, char** argv){
             case 'i':
                 intensity = atof(optarg);
                 break;
-            case 'k':
-                K = atof(optarg);
-                break;
+            case 'h':
             default:
-                return 1;
+                fprintf(stderr, helpmsg, argv[0], DAMP, intensity);
+                return 0;
         }
     }
 
-    start_ncurses();
+    if (start_ncurses() != 0){
+        stop_ncurses();
+        fprintf(stderr, colormsg, argv[0]);
+        return 1;
+    }
+
     puddle(intensity);
+    stop_ncurses();
     return 0;
 }
