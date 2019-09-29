@@ -10,10 +10,24 @@
  *            888                                                                                 *
  *           o888o                                                                                *
  *                                                                                                *
- *                                Copyright ⓒ 2019 Wyatt Sheffield                                *
- *                                                                                                *
  *                         Starts a pleasant rainstorm in your terminal.                          *
  *                 On days like this, it's nice to just curl up with a good book.                 *
+ *                                                                                                *
+ *                                Copyright ⓒ 2019 Wyatt Sheffield                                *
+ *                                                                                                *
+ *                                                                                                *
+ *         This program is free software: you can redistribute it and/or modify it under          *
+ *         the terms of the GNU General Public License as published by the Free Software          *
+ *           Foundation, either version 3 of the License, or (at your option) any later           *
+ *                                            version.                                            *
+ *                                                                                                *
+ *          This program is distributed in the hope that it will be useful, but WITHOUT           *
+ *         ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS          *
+ *             FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more             *
+ *                                            details.                                            *
+ *                                                                                                *
+ *            You should have received a copy of the GNU General Public License along             *
+ *                with this program.  If not, see <https://www.gnu.org/licenses/>.                *
  *                                                                                                *
  *************************************************************************************************/
 
@@ -25,6 +39,9 @@
 #include <unistd.h> //usleep, getopt
 
 //---------------------------------------------[Macros]---------------------------------------------
+
+#define MONO 0
+#define BLUE 1
 
 #define SQRT2 1.41421356237
 
@@ -44,7 +61,8 @@ const double MAXDISP = 1;
 
 // Used if colors are not supported in the terminal.
 const char GREYSCALE[] = " .,:?)tuUO*%B@$#";
-
+// xterm color codes
+const int BLUES[] = { 16, 17, 18, 19, 20, 21, 26, 27, 33, 39, 45, 51 };
 //The number of colors available.
 size_t SCALE;
 
@@ -96,20 +114,37 @@ void simulate(double*** buf1, double*** buf2, size_t rows, size_t cols, double d
 
 //---------------------------------------[NCURSES functions]----------------------------------------
 
-int start_ncurses(){
+void set_palette(int p){
+    switch (p){
+        case BLUE:
+            // Blue palette
+            SCALE = sizeof(BLUES)/sizeof(int);
+            for (int i = 0; i < SCALE; i++){
+                init_pair(i+1, BLUES[i], BLUES[i]);
+            }
+            break;
+        case MONO:
+        default:
+            // Monochrome palette
+            //for whatever reason, white is #231, then #232 is dark grey, and the colors keep getting
+            //lighter up to 255. so we need to start at #232 and place #231 at the end if we want white
+            //to be included, or we can omit it and stick with 24 greyscale values.
+            SCALE = 24;
+            for(int i = 0; i < SCALE; i++){
+                //Unfortunately, we have to start from 1 instead of 0.
+                init_pair(i+1, i+232, i+232);
+            }
+        break;
+    }
+}
+
+int start_ncurses(int p){
     initscr();
 #ifndef NOCOLOR
     if (has_colors()){
         start_color();
         if (COLORS < 256) { return -1; }
-        //for whatever reason, white is #231, then #232 is dark grey, and the colors keep getting
-        //lighter up to 255. so we need to start at #232 and place #231 at the end if we want white
-        //to be included, or we can omit it and stick with 24 greyscale values.
-        for(int i = 0; i < 24; i++){
-            //Unfortunately, we have to start from 1 instead of 0.
-            init_pair(i+1, i+232, i+232);
-        }
-        SCALE = 24;
+        set_palette(p);
     }
     else { return -1; }
 #endif //NOCOLOR
@@ -142,11 +177,10 @@ int printframe(double** field, size_t row, size_t col){
             mag = MIN(abs((int)(SCALE * field[r][c] / (double)(MAXDISP))), SCALE);
             mag = MAX(1, mag);
             attron(COLOR_PAIR(mag));
-#endif //NOCOLOR
+#endif /* NOCOLOR */
             //Subtracting 1 since the loop starts incrementing at 1.
             move(r-1, (c-1)*2);
             addch(ch); addch(ch);
-            attroff(COLOR_PAIR(mag));
         }
     }
     refresh();
@@ -199,9 +233,10 @@ int main(int argc, char** argv){
     srand(time(NULL));
     int opt;
     opterr = 0;
+
     double intensity = 25;
     double damp = 0.95;
-
+    int palette = BLUE;
     const char helpmsg[] =
         "Usage: %s [flags]\n"\
         "\t-d\tSet the damping factor. A smaller damping factor\n"\
@@ -217,13 +252,13 @@ int main(int argc, char** argv){
         "(the output should read xterm-256color). When compiling,\n"\
         "make sure that you have ncurses ABI 6 or later and that\n"\
         "you link against ncurses with the flag -lncursesw if you\n"\
-        "are not using the makefile for some reason.  If you are on\n"\
+        "are not using the makefile for some reason. If you are on\n"\
         "a system or terminal that does not have such capability,\n"\
         "you can compile with\n"\
         "$ make nocolor\n"\
         "or use the -DNOCOLOR flag with gcc.\n";
 
-    while ((opt = getopt(argc, argv, "d:i:h")) != -1){
+    while ((opt = getopt(argc, argv, "d:i:hp:")) != -1){
         switch (opt) {
             case 'd':
                 damp = atof(optarg);
@@ -231,13 +266,17 @@ int main(int argc, char** argv){
             case 'i':
                 intensity = atof(optarg);
                 break;
+            case 'p':
+                palette = atoi(optarg);
+                break;
             case 'h':
             default:
                 fprintf(stderr, helpmsg, argv[0], damp, intensity);
                 return 0;
         }
     }
-    if (start_ncurses() != 0){
+
+    if (start_ncurses(palette) != 0){
         stop_ncurses();
         fprintf(stderr, colormsg, argv[0]);
         return 1;
