@@ -163,19 +163,25 @@ void stop_ncurses(){
     endwin();
 }
 
+//----------------------------------------------[Draw]----------------------------------------------
+
 int printframe(double** field, size_t row, size_t col){
-    char ch = ' ';
+    char ch = ' '; //The char to be printed
     int mag; //Magnitude of the ripple and therefore its color
+    double disp;
+
     //Remember that extra padding around the buffers!
     for(int r = 1; r <= row; r++){
         for(int c = 1; c <= col; c++){
 #ifdef NOCOLOR
-            mag = MIN((int)(abs((double)SCALE * field[r][c] / (double)MAXDISP)), SCALE - 1);
+            mag = MIN((int)(abs((double)SCALE * field[r][c] / MAXDISP)), SCALE - 1);
             mag = MAX(0, mag);
             ch = GREYSCALE[mag];
 #else
-            mag = MIN(abs((int)(SCALE * field[r][c] / (double)(MAXDISP))), SCALE);
-            mag = MAX(1, mag);
+            // We want the center value of our color pallette to be 0, with the zeroth index being
+            // at the minimum displacement and the last index at the maximum displacement.
+            disp = 1 + ((double)SCALE/2) + ((double)SCALE * field[r][c] / (2 * MAXDISP));
+            mag = CLAMP(disp, 1, SCALE);
             attron(COLOR_PAIR(mag));
 #endif /* NOCOLOR */
             //Subtracting 1 since the loop starts incrementing at 1.
@@ -236,7 +242,7 @@ int main(int argc, char** argv){
 
     double intensity = 25;
     double damp = 0.95;
-    int palette = BLUE;
+    int palette = MONO;
     const char helpmsg[] =
         "Usage: %s [flags]\n"\
         "\t-d\tSet the damping factor. A smaller damping factor\n"\
