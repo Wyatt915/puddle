@@ -148,7 +148,9 @@ int start_ncurses(int p){
         set_palette(p);
     }
     else { return -1; }
-#endif //NOCOLOR
+#else
+    SCALE = (sizeof(GREYSCALE)/sizeof(char)) - 1;
+#endif
     cbreak();
     curs_set(0); //Invisible cursor
     timeout(0); //make getch() nonblocking
@@ -175,11 +177,11 @@ int printframe(double** field, size_t row, size_t col){
     for(int r = 1; r <= row; r++){
         for(int c = 1; c <= col; c++){
 #ifdef NOCOLOR
-            mag = MIN((int)(abs((double)SCALE * field[r][c] / MAXDISP)), SCALE - 1);
-            mag = MAX(0, mag);
+            mag = abs((double)(SCALE-1) * field[r][c] / MAXDISP);
+            mag = CLAMP(mag, 0, SCALE-1);
             ch = GREYSCALE[mag];
 #else
-            // We want the center value of our color pallette to be 0, with the zeroth index being
+            // We want the center value of our color palette to be 0, with the zeroth index being
             // at the minimum displacement and the last index at the maximum displacement.
             disp = 1 + ((double)SCALE/2) + ((double)SCALE * field[r][c] / (2 * MAXDISP));
             mag = CLAMP(disp, 1, SCALE);
@@ -215,7 +217,7 @@ void puddle(double intensity, double damp){
             y = 1 + rand() % (HEIGHT - 2);
             wait = rand() % (int)(framerate * 10 / intensity);
             count = -1;
-            field[y][x] += 8*(double)rand()/(double)(RAND_MAX/MAXDISP) - (MAXDISP/2);
+            field[y][x] += 8*(double)rand()/(double)(RAND_MAX/MAXDISP) - 4;
         }
         simulate(field, next, HEIGHT, WIDTH, damp);
 #ifndef DEBUG
@@ -238,18 +240,18 @@ void puddle(double intensity, double damp){
 
 int main(int argc, char** argv){
     srand(time(NULL));
-    int opt;
-    opterr = 0;
-
-    double intensity = 25;
+    double intensity = 75;
     double damp = 0.95;
     int palette = MONO;
+
     const char helpmsg[] =
         "Usage: %s [flags]\n"\
         "\t-d\tSet the damping factor. A smaller damping factor\n"\
         "\t\tmeans ripples die out faster. Default is %g.\n"\
         "\t-i\tSet the rainfall intensity. A higher intensity means\n"\
         "\t\tmore raindrops per second. Default is %g.\n"\
+        "\t-p\tSelect the color palette to be used. 0 for monochrome\n"\
+        "\t\tand 1 for blue. default is %d.\n"\
         "\t-h\tShow this message and exit\n";
 
     const char colormsg[] =
@@ -265,6 +267,9 @@ int main(int argc, char** argv){
         "$ make nocolor\n"\
         "or use the -DNOCOLOR flag with gcc.\n";
 
+    int opt;
+    opterr = 0;
+
     while ((opt = getopt(argc, argv, "d:i:hp:")) != -1){
         switch (opt) {
             case 'd':
@@ -274,11 +279,17 @@ int main(int argc, char** argv){
                 intensity = atof(optarg);
                 break;
             case 'p':
+#ifdef NOCOLOR
+                fprintf(stderr,
+                        "%s has been compiled with NOCOLOR defined. The -p flag is unavailable.\n",
+                        argv[0]);
+                return 1;
+#endif
                 palette = atoi(optarg);
                 break;
             case 'h':
             default:
-                fprintf(stderr, helpmsg, argv[0], damp, intensity);
+                fprintf(stderr, helpmsg, argv[0], damp, intensity, palette);
                 return 0;
         }
     }
