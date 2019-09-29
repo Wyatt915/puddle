@@ -289,7 +289,7 @@ int main(int argc, char** argv){
         "\t-i\tSet the rainfall intensity. A higher intensity means\n"\
         "\t\tmore raindrops per second. Default is %g.\n"\
         "\t-p\tSelect the color palette to be used. 0 for monochrome\n"\
-        "\t\tand 1 for blue. default is %d.\n"\
+        "\t\tand 1 for blue. Default is %d.\n"\
         "\t-h\tShow this message and exit\n";
 
     const char colormsg[] =
