@@ -1,3 +1,22 @@
+/**************************************************************************************************
+ *                                                                                                *
+ *                                        .o8        .o8  oooo                                    *
+ *                                       "888       "888  `888                                    *
+ *           oo.ooooo.  oooo  oooo   .oooo888   .oooo888   888   .ooooo.       .ooooo.            *
+ *            888' `88b `888  `888  d88' `888  d88' `888   888  d88' `88b     d88' `"Y8           *
+ *            888   888  888   888  888   888  888   888   888  888ooo888     888                 *
+ *            888   888  888   888  888   888  888   888   888  888    .o .o. 888   .o8           *
+ *            888bod8P'  `V88V"V8P' `Y8bod88P" `Y8bod88P" o888o `Y8bod8P' Y8P `Y8bod8P'           *
+ *            888                                                                                 *
+ *           o888o                                                                                *
+ *                                                                                                *
+ *                                Copyright ⓒ 2019 Wyatt Sheffield                                *
+ *                                                                                                *
+ *                         Starts a pleasant rainstorm in your terminal.                          *
+ *                 On days like this, it's nice to just curl up with a good book.                 *
+ *                                                                                                *
+ *************************************************************************************************/
+
 #include <ncurses.h>
 #include <signal.h>
 #include <stdlib.h> //random, abs
@@ -5,18 +24,31 @@
 #include <time.h>
 #include <unistd.h> //usleep, getopt
 
+//---------------------------------------------[Macros]---------------------------------------------
+
 #define SQRT2 1.41421356237
 
-#define MIN(X, Y)  ((X) < (Y) ? (X) : (Y))
-#define MAX(X, Y)  ((X) > (Y) ? (X) : (Y))
+#define MIN(X, Y)       ((X) < (Y) ? (X) : (Y))
+#define MAX(X, Y)       ((X) > (Y) ? (X) : (Y))
+#define CLAMP(X, A, B)  (MAX((A),MIN((X),(B))))
 
-size_t WIDTH;
-size_t HEIGHT;
-double MAXDISP = 1;
+//--------------------------------------------[Globals]---------------------------------------------
 
-static const char GREYSCALE[] = " .,:?)tuUO*%B@$#";
+// Width and height are initialized for debugging purposes.
+size_t WIDTH = 100;
+size_t HEIGHT = 100;
 
-//---------------------------------------[Memory Management]----------------------------------------
+// Maximum displacement. This value is actually sometimes exceeded when raindrops fall, but we use
+// this value to clamp the display scale
+const double MAXDISP = 1;
+
+// Used if colors are not supported in the terminal.
+const char GREYSCALE[] = " .,:?)tuUO*%B@$#";
+
+//The number of colors available.
+size_t SCALE;
+
+//----------------------------[Memory Management and Utility Functions]-----------------------------
 
 double** new_grid(size_t row, size_t col){
     double** grid = (double**) malloc(row * sizeof(double*));
@@ -35,23 +67,27 @@ void free_grid(double** grid, size_t row){
 }
 
 //-------------------------------------------[Simulation]-------------------------------------------
-//https://web.archive.org/web/20160418004149/http://freespace.virgin.net/hugo.elias/graphics/x_water.htm
+
+// Modified from the following:
+// https://web.archive.org/web/20160418004149/http://freespace.virgin.net/hugo.elias/graphics/x_water.htm
+// with a slight tweak to make ripples more circular. All that entails is taking corner cells into
+// consideration.
 
 void simulate(double*** buf1, double*** buf2, size_t rows, size_t cols, double damp){
-    //Remember that the buffers are larger than the screen area. there is a padding of 1 cell all
-    //the way around, hence why we are able to access the memory location at i+1 and j+1 in all
-    //cases.
+    // Remember that the buffers are larger than the screen area. there is a padding of 1 cell all
+    // the way around, hence why we are able to access the memory location at i+1 and j+1 in all
+    // cases. Similarly for i-1 and j-1.
     for (size_t i = 1; i < rows; i++){
         for (size_t j = 1; j < cols; j++){
-            // Note that 11/32 + 5/32 = 1/2.
+            // Note that ⅓ + ⅙ = ½ and that ⅓ = 2 × ⅙
             (*buf2)[i][j]=(((*buf1)[i-1][j] +
                             (*buf1)[i+1][j] +
                             (*buf1)[i][j-1] +
-                            (*buf1)[i][j+1]) * 11 / 32) + (( //We have added the edges, now do diagonals.
+                            (*buf1)[i][j+1]) / 3) + (( //We have added the edges, now do corners.
                             (*buf1)[i-1][j-1]/SQRT2 +
                             (*buf1)[i+1][j-1]/SQRT2 +
                             (*buf1)[i-1][j+1]/SQRT2 +
-                            (*buf1)[i+1][j+1]/SQRT2) * 5 / 32)
+                            (*buf1)[i+1][j+1]/SQRT2) / 6)
                             - (*buf2)[i][j];
             (*buf2)[i][j] *= damp;
         }
@@ -70,8 +106,10 @@ int start_ncurses(){
         //lighter up to 255. so we need to start at #232 and place #231 at the end if we want white
         //to be included, or we can omit it and stick with 24 greyscale values.
         for(int i = 0; i < 24; i++){
+            //Unfortunately, we have to start from 1 instead of 0.
             init_pair(i+1, i+232, i+232);
         }
+        SCALE = 24;
     }
     else { return -1; }
 #endif //NOCOLOR
@@ -91,19 +129,18 @@ void stop_ncurses(){
 }
 
 int printframe(double** field, size_t row, size_t col){
-    char ch = '#';
+    char ch = ' ';
     int mag; //Magnitude of the ripple and therefore its color
-    int len = sizeof(GREYSCALE);
     //Remember that extra padding around the buffers!
     for(int r = 1; r <= row; r++){
         for(int c = 1; c <= col; c++){
 #ifdef NOCOLOR
-            int ch_val = MIN((int)(abs((double)len * field[r][c] / (double)MAXDISP)), len - 1);
-            ch_val = MAX(0, ch_val);
-            ch = GREYSCALE[ch_val];
+            mag = MIN((int)(abs((double)SCALE * field[r][c] / (double)MAXDISP)), SCALE - 1);
+            mag = MAX(0, mag);
+            ch = GREYSCALE[mag];
 #else
-            mag = MIN(abs((int)(24.0 * field[r][c] / (double)(MAXDISP))), 24);
-            mag = MAX(mag, 1);
+            mag = MIN(abs((int)(SCALE * field[r][c] / (double)(MAXDISP))), SCALE);
+            mag = MAX(1, mag);
             attron(COLOR_PAIR(mag));
 #endif //NOCOLOR
             //Subtracting 1 since the loop starts incrementing at 1.
@@ -140,8 +177,9 @@ void puddle(double intensity, double damp){
             field[y][x] += 8*(double)rand()/(double)(RAND_MAX/MAXDISP) - (MAXDISP/2);
         }
         simulate(&field, &next, HEIGHT, WIDTH, damp);
+#ifndef DEBUG
         printframe(field, HEIGHT, WIDTH);
-
+#endif
         //Swap the buffers
         temp = field;
         field = next;
@@ -199,7 +237,6 @@ int main(int argc, char** argv){
                 return 0;
         }
     }
-
     if (start_ncurses() != 0){
         stop_ncurses();
         fprintf(stderr, colormsg, argv[0]);

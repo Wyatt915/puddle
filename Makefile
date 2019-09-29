@@ -7,16 +7,14 @@ CFLAGS=
 EXEC = puddle
 
 #For "production" releases, go ahead and optimize
-all: CXXFLAGS += -O2
+all: CFLAGS += -O3
 all: $(EXEC)
 
-
-
 #add any debug flags (e.g -DDEBUG) here
-debug: CFLAGS += -g
+debug: CFLAGS += -g -DDEBUG
 debug: $(EXEC)
 
-nocolor: CFLAGS += -DNOCOLOR
+nocolor: CFLAGS += -DNOCOLOR -O3
 nocolor: $(EXEC)
 
 # Main target
