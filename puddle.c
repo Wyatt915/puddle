@@ -34,7 +34,6 @@
 #include <ncurses.h>
 #include <signal.h>
 #include <stdlib.h> //random, abs
-#include <string.h>
 #include <time.h>
 #include <unistd.h> //usleep, getopt
 

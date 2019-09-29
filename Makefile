@@ -1,4 +1,5 @@
 CC=gcc
+DESTDIR ?= $(HOME)/bin
 #ncurses is limited to 16 colors; ncursesw has wide char support and 256 colors
 LNFLAGS=-lncursesw
 CFLAGS=
@@ -21,11 +22,13 @@ nocolor: $(EXEC)
 $(EXEC): puddle.c 
 	$(CC) puddle.c $(CFLAGS) $(LNFLAGS) -o $(EXEC)
 
-
-
 # To remove generated files
 clean:
 	rm -f $(OBJECTS)
 
 install:
-	cp $(EXEC) ~/bin/.
+	install -d $(DESTDIR)
+	install -m 755 $(EXEC) $(DESTDIR)
+
+uninstall:
+	rm $(DESTDIR)/$(EXEC)

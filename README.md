@@ -2,11 +2,13 @@
 ![](demo.gif)
 
 ## Build and run
-    $ make
-    $ ./puddle
+    $ make && make install
+    $ puddle
 If your terminal does not support 256 colors, use
+
     $ make nocolor
 
+## Options
 ```
 Usage: ./puddle [flags]
 	-d	Set the damping factor. A smaller damping factor
