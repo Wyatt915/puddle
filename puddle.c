@@ -62,7 +62,7 @@ const double MAXDISP = 1;
 // Used if colors are not supported in the terminal.
 const char GREYSCALE[] = " .,:?)tuUO*%B@$#";
 // xterm color codes
-const int BLUES[] = { 16, 17, 18, 19, 20, 21, 26, 27, 33, 39, 45, 51 };
+const int BLUES[] = { 16, 17, 18, 19, 20, 21, 26, 27, 32, 33, 39, 75, 81, 123, 159, 195, 231 };
 //The number of colors available.
 size_t SCALE;
 
@@ -91,23 +91,24 @@ void free_grid(double** grid, size_t row){
 // with a slight tweak to make ripples more circular. All that entails is taking corner cells into
 // consideration.
 
-void simulate(double*** buf1, double*** buf2, size_t rows, size_t cols, double damp){
+void simulate(double** buf1, double** buf2, size_t rows, size_t cols, double damp){
     // Remember that the buffers are larger than the screen area. there is a padding of 1 cell all
     // the way around, hence why we are able to access the memory location at i+1 and j+1 in all
     // cases. Similarly for i-1 and j-1.
-    for (size_t i = 1; i < rows; i++){
-        for (size_t j = 1; j < cols; j++){
+    for (size_t i = 1; i <= rows; i++){
+        for (size_t j = 1; j <= cols; j++){
             // Note that ⅓ + ⅙ = ½ and that ⅓ = 2 × ⅙
-            (*buf2)[i][j]=(((*buf1)[i-1][j] +
-                            (*buf1)[i+1][j] +
-                            (*buf1)[i][j-1] +
-                            (*buf1)[i][j+1]) / 3) + (( //We have added the edges, now do corners.
-                            (*buf1)[i-1][j-1]/SQRT2 +
-                            (*buf1)[i+1][j-1]/SQRT2 +
-                            (*buf1)[i-1][j+1]/SQRT2 +
-                            (*buf1)[i+1][j+1]/SQRT2) / 6)
-                            - (*buf2)[i][j];
-            (*buf2)[i][j] *= damp;
+            buf2[i][j]=(
+                   (buf1[i-1][j] +
+                    buf1[i+1][j] +
+                    buf1[i][j-1] +
+                    buf1[i][j+1]) / 3) + (( //We have added the edges, now do corners.
+                    buf1[i-1][j-1]/SQRT2 +
+                    buf1[i+1][j-1]/SQRT2 +
+                    buf1[i-1][j+1]/SQRT2 +
+                    buf1[i+1][j+1]/SQRT2) / 6)
+                    - buf2[i][j];
+            buf2[i][j] *= damp;
         }
     }
 }
@@ -216,7 +217,7 @@ void puddle(double intensity, double damp){
             count = -1;
             field[y][x] += 8*(double)rand()/(double)(RAND_MAX/MAXDISP) - (MAXDISP/2);
         }
-        simulate(&field, &next, HEIGHT, WIDTH, damp);
+        simulate(field, next, HEIGHT, WIDTH, damp);
 #ifndef DEBUG
         printframe(field, HEIGHT, WIDTH);
 #endif
