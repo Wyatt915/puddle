@@ -52,8 +52,8 @@
 //--------------------------------------------[Globals]---------------------------------------------
 
 // Width and height are initialized for debugging purposes.
-size_t WIDTH = 100;
-size_t HEIGHT = 100;
+uint16_t WIDTH = 100;
+uint16_t HEIGHT = 100;
 
 // Maximum displacement. This value is actually sometimes exceeded when raindrops fall, but we use
 // this value to clamp the display scale
@@ -66,14 +66,30 @@ const int BLUES[] = { 16, 17, 18, 19, 20, 21, 26, 27, 32, 33, 39, 75, 81, 123, 1
 //The number of colors available.
 size_t SCALE;
 
+//----------------------------------------[Signal Handling]-----------------------------------------
+
+static volatile sig_atomic_t sig_caught = 0;
+
+void sig_handler(int signum){
+    sig_caught = signum;
+}
+
 //----------------------------[Memory Management and Utility Functions]-----------------------------
 
 double** new_grid(size_t row, size_t col){
     double** grid = (double**) malloc(row * sizeof(double*));
     for(size_t i = 0; i < row; i++){
-        grid[i] = (double*) calloc(col, sizeof(double));
+        grid[i] = calloc(col, sizeof(double));
     }
     return grid;
+}
+
+void copy_grid(double** dest, double** src, size_t row, size_t col){
+    for(size_t i = 0; i < row; i++){
+        for (size_t j = 0; j < col; j++){
+            dest[i][j] = src[i][j];
+        }
+    }
 }
 
 void free_grid(double** grid, size_t row){
@@ -204,13 +220,15 @@ void puddle(double intensity, double damp){
     int frameperiod = persecond / framerate;
     double** field = new_grid(HEIGHT+2, WIDTH+2);
     double** next = new_grid(HEIGHT+2, WIDTH+2);
-    double** temp;
+    double** temp; // Used for swapping
+    double** buf1; double** buf2; // Used for resizing
     int c = 0;
     int x;
     int y;
     int wait = rand() % (int)(framerate * 10 / intensity);
     int count = -1;
-    while ((c = getch()) != 'q'){
+loop:
+    while (getch() != 'q' && sig_caught == 0){
         if (count == wait){
             // If raindrops fall directly on the edge they get "stuck"
             x = 1 + rand() % (WIDTH - 2);
@@ -231,14 +249,34 @@ void puddle(double intensity, double damp){
         usleep(frameperiod);
         count++;
     }
+
+    if (sig_caught == SIGWINCH){
+        endwin();
+        refresh();
+        size_t old_h = HEIGHT + 2; size_t old_w = WIDTH + 2;
+        getmaxyx(stdscr, HEIGHT, WIDTH);
+        //resizeterm(HEIGHT, WIDTH);
+        WIDTH /= 2; //Divide by 2 to make circular ripples instead of elliptical ones.
+        buf1 = new_grid(HEIGHT+2, WIDTH+2); buf2 = new_grid(HEIGHT+2, WIDTH+2);
+        copy_grid(buf1, field, MIN(old_h, HEIGHT), MIN(old_w, WIDTH));
+        copy_grid(buf2, next, MIN(old_h, HEIGHT), MIN(old_w, WIDTH));
+        free_grid(field, old_h); free_grid(next, old_h);
+        field = buf1; next = buf2;
+        buf1 = NULL; buf2 = NULL;
+        sig_caught = 0;
+        goto loop;
+    }
     free_grid(field, HEIGHT+2);
     free_grid(next, HEIGHT+2);
-    field = NULL;
+    field = NULL; next = NULL;
 }
 
 //----------------------------------------------[Main]----------------------------------------------
 
 int main(int argc, char** argv){
+    signal(SIGINT, sig_handler);
+    signal(SIGWINCH, sig_handler);
+
     srand(time(NULL));
     double intensity = 75;
     double damp = 0.95;
