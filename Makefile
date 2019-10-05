@@ -15,9 +15,6 @@ all: $(EXEC)
 debug: CFLAGS += -g -DDEBUG
 debug: $(EXEC)
 
-nocolor: CFLAGS += -DNOCOLOR -O3
-nocolor: $(EXEC)
-
 # Main target
 $(EXEC): puddle.c 
 	$(CC) puddle.c $(CFLAGS) $(LNFLAGS) -o $(EXEC)

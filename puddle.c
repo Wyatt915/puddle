@@ -87,7 +87,7 @@ void simulate(double** buf1, double** buf2, size_t rows, size_t cols, double dam
     // cases. Similarly for i-1 and j-1.
     for (size_t i = 1; i <= rows; i++){
         for (size_t j = 1; j <= cols; j++){
-            // Note that ⅓ + ⅙ = ½ and that ⅓ = 2 × ⅙
+            // Note that 1/3 + 1/6 = 1/2 and that 1/3 = 2 × 1/6
             buf2[i][j]=(
                    (buf1[i-1][j] +
                     buf1[i+1][j] +
@@ -131,16 +131,11 @@ void set_palette(int p){
 
 int start_ncurses(int p){
     initscr();
-#ifndef NOCOLOR
-    if (has_colors()){
-        start_color();
-        if (COLORS < 256) { return -1; }
-        set_palette(p);
-    }
-    else { return -1; }
-#else
-    SCALE = (sizeof(GREYSCALE)/sizeof(char)) - 1;
-#endif
+    if (has_colors()) { start_color(); }
+
+    if (COLORS >= 255){ set_palette(p); }
+    else { SCALE = (sizeof(GREYSCALE)/sizeof(char)) - 1; }
+
     cbreak();
     curs_set(0); //Invisible cursor
     timeout(0); //make getch() nonblocking
@@ -166,17 +161,18 @@ int printframe(double** field, size_t row, size_t col){
     //Remember that extra padding around the buffers!
     for(int r = 1; r <= row; r++){
         for(int c = 1; c <= col; c++){
-#ifdef NOCOLOR
-            mag = abs((double)(SCALE-1) * field[r][c] / MAXDISP);
-            mag = CLAMP(mag, 0, SCALE-1);
-            ch = GREYSCALE[mag];
-#else
-            // We want the center value of our color palette to be 0, with the zeroth index being
-            // at the minimum displacement and the last index at the maximum displacement.
-            disp = 1 + ((double)SCALE/2) + ((double)SCALE * field[r][c] / (2 * MAXDISP));
-            mag = CLAMP(disp, 1, SCALE);
-            attron(COLOR_PAIR(mag));
-#endif /* NOCOLOR */
+            if (COLORS < 256){
+                mag = abs((double)(SCALE-1) * field[r][c] / MAXDISP);
+                mag = CLAMP(mag, 0, SCALE-1);
+                ch = GREYSCALE[mag];
+            }
+            else {
+                // We want the center value of our color palette to be 0, with the zeroth index
+                // being at the minimum displacement and the last index at the maximum displacement.
+                disp = 1 + ((double)SCALE/2) + ((double)SCALE * field[r][c] / (2 * MAXDISP));
+                mag = CLAMP(disp, 1, SCALE);
+                attron(COLOR_PAIR(mag));
+            }
             //Subtracting 1 since the loop starts incrementing at 1.
             move(r-1, (c-1)*2);
             addch(ch); addch(ch);
@@ -187,6 +183,14 @@ int printframe(double** field, size_t row, size_t col){
 
 //------------------------------------------[Primary Loop]------------------------------------------
 
+void mycopy(double*** dest, double*** src, size_t rows, size_t cols){
+    for (size_t i = 1; i < rows - 1; i++){
+        for (size_t j = 1; j < cols - 1; j++){
+            (*dest)[i][j] = (*src)[i][j];
+        }
+    }
+}
+
 void puddle(double intensity, double damp){
     const int persecond = 1000000;
     int framerate = 30;
@@ -195,7 +199,6 @@ void puddle(double intensity, double damp){
     double** field = new_grid(HEIGHT+2, WIDTH+2);
     double** next = new_grid(HEIGHT+2, WIDTH+2);
     double** temp; // Used for swapping
-    double** buf1; double** buf2; // Used for resizing
     int c = 0;
     int x;
     int y;
@@ -212,9 +215,7 @@ loop:
             field[y][x] += 8*(double)rand()/(double)(RAND_MAX/MAXDISP) - 4;
         }
         simulate(field, next, HEIGHT, WIDTH, damp);
-#ifndef DEBUG
         printframe(field, HEIGHT, WIDTH);
-#endif
         //Swap the buffers
         temp = field;
         field = next;
@@ -231,8 +232,8 @@ loop:
         getmaxyx(stdscr, HEIGHT, WIDTH);
         resizeterm(HEIGHT, WIDTH);
         WIDTH /= 2; //Divide by 2 to make circular ripples instead of elliptical ones.
-        resize_grid(field, old_w, old_h, WIDTH+2, HEIGHT+2);
-        resize_grid(next, old_w, old_h, WIDTH+2, HEIGHT+2);
+        field = resize_grid(&field, old_h, old_w, HEIGHT+2, WIDTH+2);
+        next = resize_grid(&next, old_h, old_w, HEIGHT+2, WIDTH+2);
         sig_caught = 0;
         goto loop;
     }
@@ -262,19 +263,6 @@ int main(int argc, char** argv){
         "\t\tand 1 for blue. Default is %d.\n"\
         "\t-h\tShow this message and exit\n";
 
-    const char colormsg[] =
-        "%s requres 256-color support to run.\n"\
-        "You can check if your terminal has 256 colors with\n"\
-        "$ echo $TERM\n"\
-        "(the output should read xterm-256color). When compiling,\n"\
-        "make sure that you have ncurses ABI 6 or later and that\n"\
-        "you link against ncurses with the flag -lncursesw if you\n"\
-        "are not using the makefile for some reason. If you are on\n"\
-        "a system or terminal that does not have such capability,\n"\
-        "you can compile with\n"\
-        "$ make nocolor\n"\
-        "or use the -DNOCOLOR flag with gcc.\n";
-
     int opt;
     opterr = 0;
 
@@ -287,12 +275,6 @@ int main(int argc, char** argv){
                 intensity = atof(optarg);
                 break;
             case 'p':
-#ifdef NOCOLOR
-                fprintf(stderr,
-                        "%s has been compiled with NOCOLOR defined. The -p flag is unavailable.\n",
-                        argv[0]);
-                return 1;
-#endif
                 palette = atoi(optarg);
                 break;
             case 'h':
@@ -302,12 +284,7 @@ int main(int argc, char** argv){
         }
     }
 
-    if (start_ncurses(palette) != 0){
-        stop_ncurses();
-        fprintf(stderr, colormsg, argv[0]);
-        return 1;
-    }
-
+    start_ncurses(palette);
     puddle(intensity, damp);
     stop_ncurses();
     return 0;
