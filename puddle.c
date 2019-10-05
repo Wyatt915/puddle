@@ -37,16 +37,17 @@
 #include <time.h>
 #include <unistd.h> //usleep, getopt
 
+// cell_t must be defined so that ncurses_ca_utils knows how to allocate memory. In this program,
+// the data type for the cellular automaton is a double.
+#define cell_t double
+#include "ncurses_ca_utils.h"
+
 //---------------------------------------------[Macros]---------------------------------------------
 
 #define MONO 0
 #define BLUE 1
 
 #define SQRT2 1.41421356237
-
-#define MIN(X, Y)       ((X) < (Y) ? (X) : (Y))
-#define MAX(X, Y)       ((X) > (Y) ? (X) : (Y))
-#define CLAMP(X, A, B)  (MAX((A),MIN((X),(B))))
 
 //--------------------------------------------[Globals]---------------------------------------------
 
@@ -71,32 +72,6 @@ static volatile sig_atomic_t sig_caught = 0;
 
 void sig_handler(int signum){
     sig_caught = signum;
-}
-
-//----------------------------[Memory Management and Utility Functions]-----------------------------
-
-double** new_grid(size_t row, size_t col){
-    double** grid = (double**) malloc(row * sizeof(double*));
-    for(size_t i = 0; i < row; i++){
-        grid[i] = calloc(col, sizeof(double));
-    }
-    return grid;
-}
-
-void copy_grid(double** dest, double** src, size_t row, size_t col){
-    for(size_t i = 0; i < row; i++){
-        for (size_t j = 0; j < col; j++){
-            dest[i][j] = src[i][j];
-        }
-    }
-}
-
-void free_grid(double** grid, size_t row){
-    for(size_t i = 0; i < row; i++){
-        free(grid[i]);
-        grid[i] = NULL;
-    }
-    free(grid);
 }
 
 //-------------------------------------------[Simulation]-------------------------------------------
@@ -254,14 +229,10 @@ loop:
         refresh();
         size_t old_h = HEIGHT + 2; size_t old_w = WIDTH + 2;
         getmaxyx(stdscr, HEIGHT, WIDTH);
-        //resizeterm(HEIGHT, WIDTH);
+        resizeterm(HEIGHT, WIDTH);
         WIDTH /= 2; //Divide by 2 to make circular ripples instead of elliptical ones.
-        buf1 = new_grid(HEIGHT+2, WIDTH+2); buf2 = new_grid(HEIGHT+2, WIDTH+2);
-        copy_grid(buf1, field, MIN(old_h, HEIGHT), MIN(old_w, WIDTH));
-        copy_grid(buf2, next, MIN(old_h, HEIGHT), MIN(old_w, WIDTH));
-        free_grid(field, old_h); free_grid(next, old_h);
-        field = buf1; next = buf2;
-        buf1 = NULL; buf2 = NULL;
+        resize_grid(field, old_w, old_h, WIDTH+2, HEIGHT+2);
+        resize_grid(next, old_w, old_h, WIDTH+2, HEIGHT+2);
         sig_caught = 0;
         goto loop;
     }
