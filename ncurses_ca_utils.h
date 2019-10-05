@@ -81,7 +81,7 @@ void copy_grid(cell_t*** dest, cell_t*** src, size_t rows, size_t cols){
  * @param new_c the number of columns in the resized grid
  * @param copyfunc a function pointer to a user-defined function to perform the array copying
  */
-cell_t** resize_grid_cust(cell_t*** grid, size_t old_r, size_t old_c, size_t new_r, size_t new_c,
+void resize_grid_cust(cell_t*** grid, size_t old_r, size_t old_c, size_t new_r, size_t new_c,
     void (*copyfunc)(cell_t***, cell_t***, const size_t, const size_t) )
 {
     cell_t** resized = new_grid(new_r, new_c);
@@ -89,7 +89,7 @@ cell_t** resize_grid_cust(cell_t*** grid, size_t old_r, size_t old_c, size_t new
     size_t col_copylimit = MIN(old_c, new_c);
     copyfunc(&resized, grid, row_copylimit, col_copylimit);
     free_grid(*grid, old_r);
-    return resized;
+    *grid = resized;
 }
 
 /**
@@ -100,8 +100,8 @@ cell_t** resize_grid_cust(cell_t*** grid, size_t old_r, size_t old_c, size_t new
  * @param new_r the number of rows in the resized grid
  * @param new_c the number of columns in the resized grid
  */
-cell_t** resize_grid(cell_t*** grid, size_t old_r, size_t old_c, size_t new_r, size_t new_c){
-    return resize_grid_cust(grid, old_r, old_c, new_r, new_c, &copy_grid);
+void resize_grid(cell_t*** grid, size_t old_r, size_t old_c, size_t new_r, size_t new_c){
+    resize_grid_cust(grid, old_r, old_c, new_r, new_c, &copy_grid);
 }
 
 #endif /* CAUTILS_H */

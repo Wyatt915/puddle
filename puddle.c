@@ -232,8 +232,8 @@ loop:
         getmaxyx(stdscr, HEIGHT, WIDTH);
         resizeterm(HEIGHT, WIDTH);
         WIDTH /= 2; //Divide by 2 to make circular ripples instead of elliptical ones.
-        field = resize_grid(&field, old_h, old_w, HEIGHT+2, WIDTH+2);
-        next = resize_grid(&next, old_h, old_w, HEIGHT+2, WIDTH+2);
+        resize_grid(&field, old_h, old_w, HEIGHT+2, WIDTH+2);
+        resize_grid(&next, old_h, old_w, HEIGHT+2, WIDTH+2);
         sig_caught = 0;
         goto loop;
     }
