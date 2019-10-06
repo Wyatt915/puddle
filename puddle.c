@@ -55,16 +55,15 @@
 uint16_t WIDTH = 100;
 uint16_t HEIGHT = 100;
 
-// Maximum displacement. This value is actually sometimes exceeded when raindrops fall, but we use
-// this value to clamp the display scale
-const double MAXDISP = 1;
-
 // Used if colors are not supported in the terminal.
-const char GREYSCALE[] = " .,:?)tuUO*%B@$#";
+const char GREYPALETTE_SZ[] = " .,:?)tuUO*%B@$#";
+
 // xterm color codes
-const int BLUES[] = { 16, 17, 18, 19, 20, 21, 26, 27, 32, 33, 39, 75, 81, 123, 159, 195, 231 };
-//The number of colors available.
-size_t SCALE;
+const int BLUES[] = {
+    16, 17, 18, 19, 20, 21, 26, 27, 32,
+    33, 39, 75, 81, 123, 159, 195, 231};
+
+size_t PALETTE_SZ; //The number of colors available.
 
 //----------------------------------------[Signal Handling]-----------------------------------------
 
@@ -109,8 +108,8 @@ void set_palette(int p){
     switch (p){
         case BLUE:
             // Blue palette
-            SCALE = sizeof(BLUES)/sizeof(int);
-            for (int i = 0; i < SCALE; i++){
+            PALETTE_SZ = sizeof(BLUES)/sizeof(int);
+            for (int i = 0; i < PALETTE_SZ; i++){
                 init_pair(i+1, BLUES[i], BLUES[i]);
             }
             break;
@@ -120,8 +119,8 @@ void set_palette(int p){
             //for whatever reason, white is #231, then #232 is dark grey, and the colors keep getting
             //lighter up to 255. so we need to start at #232 and place #231 at the end if we want white
             //to be included, or we can omit it and stick with 24 greyscale values.
-            SCALE = 24;
-            for(int i = 0; i < SCALE; i++){
+            PALETTE_SZ = 24;
+            for(int i = 0; i < PALETTE_SZ; i++){
                 //Unfortunately, we have to start from 1 instead of 0.
                 init_pair(i+1, i+232, i+232);
             }
@@ -134,7 +133,7 @@ int start_ncurses(int p){
     if (has_colors()) { start_color(); }
 
     if (COLORS >= 255){ set_palette(p); }
-    else { SCALE = (sizeof(GREYSCALE)/sizeof(char)) - 1; }
+    else { PALETTE_SZ = (sizeof(GREYPALETTE_SZ)/sizeof(char)) - 1; }
 
     cbreak();
     curs_set(0); //Invisible cursor
@@ -162,15 +161,15 @@ int printframe(double** field, size_t row, size_t col){
     for(int r = 1; r <= row; r++){
         for(int c = 1; c <= col; c++){
             if (COLORS < 256){
-                mag = abs((double)(SCALE-1) * field[r][c] / MAXDISP);
-                mag = CLAMP(mag, 0, SCALE-1);
-                ch = GREYSCALE[mag];
+                mag = abs((double)(PALETTE_SZ-1) * field[r][c]);
+                mag = CLAMP(mag, 0, PALETTE_SZ-1);
+                ch = GREYPALETTE_SZ[mag];
             }
             else {
                 // We want the center value of our color palette to be 0, with the zeroth index
                 // being at the minimum displacement and the last index at the maximum displacement.
-                disp = 1 + ((double)SCALE/2) + ((double)SCALE * field[r][c] / (2 * MAXDISP));
-                mag = CLAMP(disp, 1, SCALE);
+                disp = 1 + ((double)PALETTE_SZ/2) + ((double)PALETTE_SZ * field[r][c] / 2);
+                mag = CLAMP(disp, 1, PALETTE_SZ);
                 attron(COLOR_PAIR(mag));
             }
             //Subtracting 1 since the loop starts incrementing at 1.
@@ -204,7 +203,7 @@ loop:
             y = 1 + rand() % (HEIGHT - 2);
             wait = rand() % (int)(framerate * 10 / intensity);
             count = -1;
-            field[y][x] += 8*(double)rand()/(double)(RAND_MAX/MAXDISP) - 4;
+            field[y][x] += 8*(double)rand()/(double)(RAND_MAX) - 4;
         }
         simulate(field, next, HEIGHT, WIDTH, damp);
         printframe(field, HEIGHT, WIDTH);
@@ -241,7 +240,7 @@ int main(int argc, char** argv){
     signal(SIGWINCH, sig_handler);
 
     srand(time(NULL));
-    double intensity = 75;
+    double intensity = 25;
     double damp = 0.95;
     int palette = MONO;
 
