@@ -183,14 +183,6 @@ int printframe(double** field, size_t row, size_t col){
 
 //------------------------------------------[Primary Loop]------------------------------------------
 
-void mycopy(double*** dest, double*** src, size_t rows, size_t cols){
-    for (size_t i = 1; i < rows - 1; i++){
-        for (size_t j = 1; j < cols - 1; j++){
-            (*dest)[i][j] = (*src)[i][j];
-        }
-    }
-}
-
 void puddle(double intensity, double damp){
     const int persecond = 1000000;
     int framerate = 30;
